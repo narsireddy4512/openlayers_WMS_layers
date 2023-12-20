@@ -1,0 +1,136 @@
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenLayers Map</title>
+    <link rel="stylesheet" href="https://openlayers.org/en/v4.6.5/css/ol.css" type="text/css">
+    <script src="https://openlayers.org/en/v4.6.5/build/ol.js"></script>
+</head>
+<body>
+
+  <div id="map" style="width: 100%; height: 400px;"></div>
+  <div id="info"></div>
+
+  <script src="map.js"></script>
+
+</body>
+</html> -->
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenLayers Feature Editing</title>
+    <!-- Add the OpenLayers library -->
+    <link rel="stylesheet" href="https://openlayers.org/en/v4.6.5/css/ol.css" type="text/css">
+    <script src="https://openlayers.org/en/v4.6.5/build/ol.js"></script>
+</head>
+<body>
+    <!-- The map container -->
+    <div id="map" style="width: 100%; height: 400px;"></div>
+
+    <!-- Buttons to trigger draw and modify interactions -->
+    <button onclick="startDraw()">Start Drawing</button>
+    <button onclick="startModify()">Start Modifying</button>
+
+    <script>
+        // Define the vector source for the editable layer
+        var vectorSource = new ol.source.Vector({
+            format: new ol.format.GeoJSON(),
+            url: function (extent) {
+                return 'http://localhost/geoserver/narsireddy/wfs?' +
+                    'service=WFS&version=1.1.0&request=GetFeature&typeNames=narsireddy:easement_polygonn&' +
+                    'outputFormat=application/json&srsname=EPSG:4326&' +
+                    'bbox=' + extent.join(',') + ',EPSG:4326';
+            },
+            strategy: ol.loadingstrategy.bbox,
+        });
+
+        // Define the vector layer for editing
+        var vectorLayer = new ol.layer.Vector({
+            source: vectorSource,
+        });
+
+        // Create the map with layers
+        var map = new ol.Map({
+            layers: [
+                new ol.layer.Tile({
+                    source: new ol.source.OSM(),
+                }),
+                vectorLayer,
+            ],
+            target: 'map',
+            view: new ol.View({
+                center: [0, 0],
+                zoom: 2,
+            }),
+        });
+
+        // Define the draw interaction
+        var draw;
+
+        // Define the modify interaction
+        var modify = new ol.interaction.Modify({
+            source: vectorSource,
+        });
+
+        function startDraw() {
+            // Disable modify interaction if it's active
+            map.removeInteraction(modify);
+
+            // Enable draw interaction
+            draw = new ol.interaction.Draw({
+                source: vectorSource,
+                type: 'Point', // or 'LineString', 'Polygon', etc.
+            });
+
+            // Handle the end of drawing to send changes to the server
+            draw.on('drawend', function (event) {
+                var features = [event.feature];
+                sendTransaction(features);
+            });
+
+            map.addInteraction(draw);
+        }
+
+        function startModify() {
+            // Disable draw interaction if it's active
+            map.removeInteraction(draw);
+
+            // Enable modify interaction
+            map.addInteraction(modify);
+        }
+
+        function sendTransaction(features) {
+            var formatWFS = new ol.format.WFS();
+            var formatGML = new ol.format.GML({
+                featureNS: 'narsireddy',
+                featureType: 'od_treerisk',
+            });
+
+            var node = formatWFS.writeTransaction(features, null, null, formatGML);
+            var payload = new XMLSerializer().serializeToString(node);
+
+            // Send the WFS-T transaction to GeoServer
+            fetch('http://localhost/geoserver/wfs', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'text/xml',
+                },
+                body: payload,
+            })
+            .then(response => response.text())
+            .then(data => {
+                // Handle the response from GeoServer
+                console.log('Transaction successful', data);
+            })
+            .catch(error => {
+                console.error('Error performing transaction', error);
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <!-- OpenLayers CSS -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.rawgit.com/openlayers/openlayers.github.io/master/en/v6.5.0/css/ol.css"
+      type="text/css"
+    />
+
+    <!-- OpenLayers Layer Switcher CSS -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/ol-layerswitcher@4.1.1/dist/ol-layerswitcher.css"
+    />
+
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+
+    <!-- Bootstrap CSS -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/css/bootstrap.min.css"
+    />
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/js/bootstrap.min.js"></script>
+
+    <!-- jQuery UI CSS -->
+    <link
+      rel="stylesheet"
+      href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css"
+    />
+
+    <!-- jQuery UI JS -->
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+
+    <!-- OpenLayers JS -->
+    <script src="https://cdn.rawgit.com/openlayers/openlayers.github.io/master/en/v6.5.0/build/ol.js"></script>
+
+    <!-- OpenLayers Layer Switcher JS -->
+    <script src="https://unpkg.com/ol-layerswitcher@4.1.1"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        padding: 0;
+        margin: 0;
+        font-family: arial;
+      }
+      #edit_save {
+        position: absolute;
+        z-index: 500;
+        top: 1%;
+        left: 60%;
+      }
+      #value {
+        position: absolute;
+        z-index: 500;
+        top: 1%;
+        left: 50%;
+      }
+
+      #map {
+        position: absolute;
+        top: 0%;
+        left: 0%;
+        width: 100%;
+        height: 100%;
+        overflow: scroll;
+        border: 0.5px solid #4caf50;
+      }
+
+      .ol-popup {
+        position: absolute;
+        background-color: white;
+        -webkit-filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.2));
+        filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.2));
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid #cccccc;
+        bottom: 12px;
+        left: -50px;
+        min-width: 280px;
+      }
+      .ol-popup:after,
+      .ol-popup:before {
+        top: 100%;
+        border: solid transparent;
+        content: " ";
+        height: 0;
+        width: 0;
+        position: absolute;
+        pointer-events: none;
+      }
+      .ol-popup:after {
+        border-top-color: white;
+        border-width: 10px;
+        left: 48px;
+        margin-left: -10px;
+      }
+      .ol-popup:before {
+        border-top-color: #cccccc;
+        border-width: 11px;
+        left: 48px;
+        margin-left: -11px;
+      }
+      .ol-popup-closer {
+        text-decoration: none;
+        position: absolute;
+        top: 2px;
+        right: 8px;
+      }
+      .ol-popup-closer:after {
+        content: "X";
+      }
+    </style>
+
+    <title>OpenLayers example</title>
+  </head>
+
+  <body>
+    <div id="map">
+      <input type="text" id="value" name="value" />
+      <button onclick="edit_save()" id="edit_save">click to save edit</button>
+    </div>
+
+    <div id="popup" class="ol-popup">
+      <a href="#" id="popup-closer" class="ol-popup-closer"></a>
+      <div id="popup-content"></div>
+    </div>
+    <div id="info">&nbsp;</div>
+
+    <script type="text/javascript">
+      var map,
+        geojson,
+        layer_name,
+        layerSwitcher,
+        featureOverlay,
+        highlightStyle;
+
+      var container = document.getElementById("popup");
+      var content = document.getElementById("popup-content");
+      var closer = document.getElementById("popup-closer");
+
+      /**
+       * Create an overlay to anchor the popup to the map.
+       */
+      var overlay = new ol.Overlay({
+        element: container,
+        autoPan: true,
+        autoPanAnimation: {
+          duration: 250,
+        },
+      });
+
+      /**
+       * Add a click handler to hide the popup.
+       * @return {boolean} Don't follow the href.
+       */
+      closer.onclick = function () {
+        overlay.setPosition(undefined);
+        closer.blur();
+        return false;
+      };
+
+      var view = new ol.View({
+        projection: "EPSG:4326",
+        center: [78.0, 23.0],
+        zoom: 5,
+      });
+      var view_ov = new ol.View({
+        projection: "EPSG:4326",
+        center: [78.0, 23.0],
+        zoom: 5,
+      });
+
+      var base_maps = new ol.layer.Group({
+        title: "Base maps",
+        layers: [
+          new ol.layer.Tile({
+            title: "OSM",
+            type: "base",
+            visible: true,
+            source: new ol.source.OSM(),
+          }),
+        ],
+      });
+
+      var OSM = new ol.layer.Tile({
+        source: new ol.source.OSM(),
+        type: "base",
+        title: "OSM",
+      });
+
+      var overlays = new ol.layer.Group({
+        title: "Overlays",
+        layers: [
+          new ol.layer.Image({
+            title: "buildings_unittesting",
+            // extent: [-180, -90, -180, 90],
+            source: new ol.source.ImageWMS({
+              url: "http://localhost:80/geoserver/wms",
+              params: { LAYERS: "narsireddy:buildings_unittesting" },
+              ratio: 1,
+              serverType: "geoserver",
+            }),
+          }),
+          new ol.layer.Image({
+            title: "polygon_mediumdata_v1",
+            // extent: [-180, -90, -180, 90],
+            source: new ol.source.ImageWMS({
+              url: "http://localhost:80/geoserver/wms",
+              params: { LAYERS: "narsireddy:polygon_mediumdata_v1" },
+              ratio: 1,
+              serverType: "geoserver",
+            }),
+          }),
+        ],
+      });
+
+      map = new ol.Map({
+        target: "map",
+        view: view,
+        overlays: [overlay],
+      });
+
+      map.addLayer(base_maps);
+      map.addLayer(overlays);
+
+      var rainfall = new ol.layer.Image({
+        title: "states",
+        // extent: [-180, -90, -180, 90],
+        source: new ol.source.ImageWMS({
+          url: "http://localhost:80/geoserver/wms",
+          params: { LAYERS: "topp:states" },
+          ratio: 1,
+          serverType: "geoserver",
+        }),
+      });
+
+      overlays.getLayers().push(rainfall);
+      //map.addLayer(rainfall);
+
+      var mouse_position = new ol.control.MousePosition();
+      map.addControl(mouse_position);
+
+      var overview = new ol.control.OverviewMap({
+        view: view_ov,
+        collapseLabel: "O",
+        label: "O",
+        layers: [OSM],
+      });
+
+      map.addControl(overview);
+
+      var full_sc = new ol.control.FullScreen({ label: "F" });
+      map.addControl(full_sc);
+
+      var zoom = new ol.control.Zoom({ zoomInLabel: "+", zoomOutLabel: "-" });
+      map.addControl(zoom);
+
+      var slider = new ol.control.ZoomSlider();
+      map.addControl(slider);
+
+      var zoom_ex = new ol.control.ZoomToExtent({
+        extent: [65.9, 7.48, 98.96, 40.3],
+      });
+      map.addControl(zoom_ex);
+
+      var layerSwitcher = new ol.control.LayerSwitcher({
+        activationMode: "click",
+        startActive: true,
+        tipLabel: "Layers", // Optional label for button
+        groupSelectStyle: "children", // Can be 'children' [default], 'group' or 'none'
+        collapseTipLabel: "Collapse layers",
+      });
+      map.addControl(layerSwitcher);
+
+    //   var url = `http://localhost/geoserver/narsireddy/wfs?service=WFS&version=2.0.0&request=GetFeature&typeName=narsireddy:polygon_mediumdata_v1&outputFormat=json&Filter=<Filter><ResourceId rid="polygon_mediumdata_v1.52256"/></Filter>`;
+         var url = `http://localhost/geoserver/narsireddy/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=narsireddy%3Aramoji_film&maxFeatures=50&outputFormat=application%2Fjson`;
+         var url1 = `http://localhost/geoserver/narsireddy/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=narsireddy%3Aeasement_polygonn&maxFeatures=50&outputFormat=application%2Fjson`
+      var style = new ol.style.Style({
+        fill: new ol.style.Fill({
+          color: "rgba(255, 255, 255, 0.7)",
+        }),
+        stroke: new ol.style.Stroke({
+          color: "#ffcc33",
+          width: 3,
+        }),
+
+        image: new ol.style.Circle({
+          radius: 7,
+          fill: new ol.style.Fill({
+            color: "#ffcc33",
+          }),
+        }),
+      });
+
+      geojson = new ol.layer.Vector({
+        title: "WFS_layer",
+        source: new ol.source.Vector({
+          url: url1,
+          format: new ol.format.GeoJSON(),
+        }),
+        style: style,
+      });
+
+      geojson.getSource().on("addfeature", function () {
+        //alert(geojson.getSource().getExtent());
+        map
+          .getView()
+          .fit(geojson.getSource().getExtent(), {
+            duration: 1590,
+            size: map.getSize(),
+          });
+      });
+      overlays.getLayers().push(geojson);
+
+      //map.addLayer(geojson);
+
+      layerSwitcher.renderPanel();
+
+      highlightStyle = new ol.style.Style({
+        fill: new ol.style.Fill({
+          color: "rgba(255,255,255,0.7)",
+        }),
+        stroke: new ol.style.Stroke({
+          color: "#3399CC",
+          width: 3,
+        }),
+        image: new ol.style.Circle({
+          radius: 10,
+          fill: new ol.style.Fill({
+            color: "#3399CC",
+          }),
+        }),
+      });
+
+      featureOverlay = new ol.layer.Vector({
+        title: "WFS_layer1",
+        source: new ol.source.Vector(),
+        style: highlightStyle,
+      });
+
+      map.on("click", highlight);
+
+      function highlight(evt) {
+        if (featureOverlay) {
+          featureOverlay.getSource().clear();
+          overlays.getLayers().remove(featureOverlay);
+          layerSwitcher.renderPanel();
+        }
+        var feature = map.forEachFeatureAtPixel(
+          evt.pixel,
+          function (feature, layer) {
+            return feature;
+          }
+        );
+
+        if (feature) {
+            console.log("feature", feature);
+          var geometry = feature.getGeometry();
+          var coord = geometry.getCoordinates();
+          var coordinate = evt.coordinate;
+          // alert(feature.get('fid'));
+
+        //   var content1 = "<h3>" + feature.get("objectid") + "</h3>";
+        //   content1 += "<h5>" + feature.get("shape_leng") + "</h5>";
+        //   content1 += "<h5>" + feature.get("shape_area") + "</h5>";
+
+        var content1 = "<h3>" + feature.get("id") + "</h3>";
+          content1 += "<h5>" + feature.get("area") + "</h5>";
+          content1 += "<h5>" + feature.get("name") + "</h5>";
+
+          // alert(content1);
+          content.innerHTML = content1;
+          overlay.setPosition(coordinate);
+          overlays.getLayers().push(featureOverlay);
+          layerSwitcher.renderPanel();
+          // map.addLayer(featureOverlay);
+          featureOverlay.getSource().addFeature(feature);
+
+          map.updateSize();
+        }
+      }
+      var source_mod = featureOverlay.getSource();
+  var modify = new ol.interaction.Modify({ source: source_mod });
+  map.addInteraction(modify);
+
+  function edit_save() {
+    var value_gid = document.getElementById("value");
+    var value1 = value_gid.value;
+
+    var mod_features = geojson.getSource().getFeatures();
+    if (mod_features.length > 0) {
+      for (var i = 0; i < mod_features.length; i++) {
+        var coords = mod_features[i].getGeometry();
+        var format = new ol.format.GML({
+          srsName: "EPSG:4326", // Update to the correct CRS
+        });
+
+        var gml3 = format.writeGeometry(coords, {
+        //   featureProjection: "EPSG:4326",
+        });
+
+        console.log("gml3", gml3)
+        var fid = mod_features[i].getId();
+        var url1 = "http://localhost/geoserver/wfs";
+        var method = "POST";
+        // var postData =
+        //   '<?xml version="1.0" encoding="UTF-8"?>' +
+        //   '<wfs:Transaction service="WFS" version="1.0.0" ' +
+        //   'xmlns:wfs="http://www.opengis.net/wfs">' +
+        //   '<wfs:Update typeName="narsireddy:ramoji_film">' +  // narsireddy is a workspace & polygon_mediumdata_v1 is layername
+        //   "<wfs:Property>" +
+        //   "<wfs:Name>the_geom</wfs:Name>" +  // the_geom is gemotry name
+        //   "<wfs:Value>" +
+        //   gml3 +
+        //   "</wfs:Value>" +
+        //   "</wfs:Property>" +
+        //   "<wfs:Property>" +
+        //   "<wfs:Name>area</wfs:Name>" +
+        //   "<wfs:Value>" +
+        //   value1 +
+        //   "</wfs:Value>" +
+        //   "</wfs:Property>" +
+        //   '<ogc:Filter xmlns:ogc="http://www.opengis.net/ogc">' +
+        //   '<ogc:FeatureId fid="' + mod_features[i].getId() + '"/>' +
+        //   "</ogc:Filter>" +
+        //   "</wfs:Update>" +
+        //   "</wfs:Transaction>";
+
+        var postData = `
+        <?xml version="1.0" encoding="UTF-8"?>
+<wfs:Transaction service="WFS" version="1.0.0" xmlns:wfs="http://www.opengis.net/wfs" xmlns:ogc="http://www.opengis.net/ogc">
+   <wfs:Update typeName="narsireddy:ramoji_film">
+      <wfs:Property>
+         <wfs:Name>the_geom</wfs:Name>
+         <wfs:Value>
+            <geom xmlns="http://www.opengis.net/gml">
+               <MultiSurface srsName="EPSG:4326">
+                  <surfaceMember>
+                     <Polygon srsName="EPSG:4326">
+                        <exterior>
+                           <LinearRing srsName="EPSG:4326">
+                              <posList srsDimension="2">17.26396323 78.6776013 17.26071902 78.68275388 17.2643449 78.68256304 17.25995567 78.68695227 17.24278041 78.68294471 17.23915452 78.67683795 17.24163539 78.67512043 17.250940085659657 78.67366919056023 17.25136804 78.67569294 17.2595</posList>
+                           </LinearRing>
+                        </exterior>
+                     </Polygon>
+                  </surfaceMember>
+               </MultiSurface>
+            </geom>
+         </wfs:Value>
+      </wfs:Property>
+      <wfs:Property>
+         <wfs:Name>area</wfs:Name>
+         <wfs:Value>Narsi Reddy</wfs:Value>
+      </wfs:Property>
+      <ogc:Filter>
+         <!-- Provide the correct FeatureId value -->
+         <ogc:FeatureId fid="ramoji_film.1"/>
+      </ogc:Filter>
+   </wfs:Update>
+</wfs:Transaction>
+`
+
+        var req = new XMLHttpRequest();
+        req.open("POST", url1, true);
+        req.setRequestHeader("Content-type", "text/xml");
+        req.onreadystatechange = function () {
+          if (req.readyState === 4) {
+            if (req.status === 200 || req.status === 201) {
+              alert("Changes saved successfully!");
+            } else {
+              alert("HTTP error " + req.status);
+            }
+          }
+        };
+        console.log(postData)
+        req.send(postData);
+      
+          }
+        }
+      }
+    </script>
+  </body>
+</html>
